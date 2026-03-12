@@ -1,0 +1,20 @@
+[tools]
+bun = "latest"
+
+[tasks.setup]
+run = ["mise install", "mise run install", "mise run build", "mise run link", "bun run ./index.tsx setup"]
+
+[tasks.install]
+run = "bun install"
+
+[tasks.build]
+run = "bun run build"
+
+[tasks.test]
+run = "bun test"
+
+[tasks.start]
+run = "bun run ./index.tsx"
+
+[tasks.link]
+run = "bun link"

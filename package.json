@@ -1,12 +1,24 @@
 {
   "name": "gh-mergeable",
-  "module": "index.ts",
+  "bin": {
+    "gh-mergeable": "./index.tsx"
+  },
+  "module": "index.tsx",
   "type": "module",
   "private": true,
+  "scripts": {
+    "build": "bun build ./index.tsx --target bun --outfile ./dist/gh-mergeable.js --external react-devtools-core",
+    "test": "bun test",
+    "start": "bun run ./index.tsx"
+  },
   "devDependencies": {
     "@types/bun": "latest"
   },
   "peerDependencies": {
     "typescript": "^5"
+  },
+  "dependencies": {
+    "ink": "^6.8.0",
+    "react": "^19.2.4"
   }
 }
