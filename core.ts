@@ -214,6 +214,9 @@ function parseWatchArgs(args: string[]): CliOptions {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (!arg) {
+      fail("Unexpected empty argument");
+    }
 
     if (arg === "--help" || arg === "-h") {
       printHelp();
@@ -296,6 +299,9 @@ function parseSetupArgs(args: string[]): SetupOptions {
 
   for (let index = 0; index < args.length; index += 1) {
     const arg = args[index];
+    if (!arg) {
+      fail("Unexpected empty argument");
+    }
 
     if (arg === "--help" || arg === "-h") {
       printHelp();
@@ -396,8 +402,8 @@ export async function resolveOptions(cliOptions: CliOptions): Promise<ResolvedOp
     command: "watch",
     once: cliOptions.once,
     repos,
-    intervalMs: cliOptions.intervalMs ?? config.intervalSec * 1000 ?? DEFAULT_INTERVAL_MS,
-    limit: cliOptions.limit ?? config.limit ?? DEFAULT_LIMIT,
+    intervalMs: cliOptions.intervalMs ?? config.intervalSec * 1000,
+    limit: cliOptions.limit ?? config.limit,
     configPath,
   };
 }

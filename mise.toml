@@ -10,6 +10,15 @@ run = "bun install"
 [tasks.build]
 run = "bun run build"
 
+[tasks.typecheck]
+run = "bun run typecheck"
+
+[tasks.ci]
+run = "bun run ci"
+
+[tasks."ci:cli"]
+run = "bun run ci:cli"
+
 [tasks.test]
 run = "bun test"
 

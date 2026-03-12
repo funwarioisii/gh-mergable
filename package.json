@@ -8,14 +8,16 @@
   "private": true,
   "scripts": {
     "build": "bun build ./index.tsx --target bun --outfile ./dist/gh-mergeable.js --external react-devtools-core",
+    "ci": "bun run build && bun run typecheck && bun test",
+    "ci:cli": "bun run ci",
+    "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
     "start": "bun run ./index.tsx"
   },
   "devDependencies": {
-    "@types/bun": "latest"
-  },
-  "peerDependencies": {
-    "typescript": "^5"
+    "@types/bun": "latest",
+    "@types/react": "^19.2.2",
+    "typescript": "^5.8.2"
   },
   "dependencies": {
     "ink": "^6.8.0",

@@ -89,5 +89,7 @@ The terminal UI is built with Ink and refreshes in place.
 
 ```bash
 bun test
+mise run typecheck
 mise run test
+mise run ci
 ```
