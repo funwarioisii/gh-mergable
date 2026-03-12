@@ -37,6 +37,34 @@ export type PullRequest = {
       } | null;
     } | null>;
   };
+  commits?: {
+    nodes?: Array<
+      | {
+          commit?: {
+            statusCheckRollup?: {
+              state?: string | null;
+              contexts?: {
+                nodes?: Array<
+                  | {
+                      __typename: "CheckRun";
+                      name: string;
+                      status?: string | null;
+                      conclusion?: string | null;
+                    }
+                  | {
+                      __typename: "StatusContext";
+                      context: string;
+                      state?: string | null;
+                    }
+                  | null
+                >;
+              } | null;
+            } | null;
+          } | null;
+        }
+      | null
+    >;
+  };
 };
 
 type SearchResponse = {
@@ -123,6 +151,29 @@ const SEARCH_QUERY = `
               state
               author {
                 login
+              }
+            }
+          }
+          commits(last: 1) {
+            nodes {
+              commit {
+                statusCheckRollup {
+                  state
+                  contexts(first: 20) {
+                    nodes {
+                      __typename
+                      ... on CheckRun {
+                        name
+                        status
+                        conclusion
+                      }
+                      ... on StatusContext {
+                        context
+                        state
+                      }
+                    }
+                  }
+                }
               }
             }
           }
@@ -464,6 +515,10 @@ export function getDefaultConfigPath() {
 }
 
 export function summarizeMergeability(pr: PullRequest) {
+  if (hasFailingChecks(pr)) {
+    return { tone: "danger", label: "FAILING", sortRank: 3 } as const;
+  }
+
   if (pr.isDraft || pr.mergeStateStatus === "DRAFT") {
     return { tone: "draft", label: "DRAFT", sortRank: 2 } as const;
   }
@@ -481,7 +536,7 @@ export function summarizeMergeability(pr: PullRequest) {
   }
 
   if (pr.mergeStateStatus === "UNKNOWN" || pr.mergeable === "UNKNOWN" || pr.mergeStateStatus === "UNSTABLE") {
-    return { tone: "pending", label: "PENDING", sortRank: 5 } as const;
+    return { tone: "pending", label: "PENDING", sortRank: 6 } as const;
   }
 
   return { tone: "success", label: "MERGEABLE", sortRank: 0 } as const;
@@ -511,10 +566,39 @@ export function comparePullRequests(left: PullRequest, right: PullRequest) {
   return new Date(right.updatedAt).getTime() - new Date(left.updatedAt).getTime();
 }
 
+export function listFailingChecks(pr: PullRequest) {
+  const failing = new Set<string>();
+  const contexts = pr.commits?.nodes?.[0]?.commit?.statusCheckRollup?.contexts?.nodes ?? [];
+
+  for (const context of contexts) {
+    if (!context) {
+      continue;
+    }
+
+    if (context.__typename === "CheckRun") {
+      if (context.conclusion === "FAILURE" || context.conclusion === "TIMED_OUT" || context.conclusion === "CANCELLED") {
+        failing.add(context.name);
+      }
+      continue;
+    }
+
+    if (context.state === "FAILURE" || context.state === "ERROR") {
+      failing.add(context.context);
+    }
+  }
+
+  return [...failing];
+}
+
+export function hasFailingChecks(pr: PullRequest) {
+  return listFailingChecks(pr).length > 0;
+}
+
 export function collectStats(prs: PullRequest[]) {
   const counts = {
     mergeable: 0,
     blocked: 0,
+    failing: 0,
     behind: 0,
     conflict: 0,
     draft: 0,
@@ -529,6 +613,9 @@ export function collectStats(prs: PullRequest[]) {
         break;
       case "BLOCKED":
         counts.blocked += 1;
+        break;
+      case "FAILING":
+        counts.failing += 1;
         break;
       case "BEHIND":
         counts.behind += 1;

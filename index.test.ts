@@ -7,6 +7,7 @@ import {
   comparePullRequests,
   getDefaultConfigDir,
   listApprovers,
+  listFailingChecks,
   normalizeConfig,
   parseArgs,
   renderConfigTemplate,
@@ -29,6 +30,9 @@ const basePr = {
     nameWithOwner: "octo/repo",
   },
   latestOpinionatedReviews: {
+    nodes: [],
+  },
+  commits: {
     nodes: [],
   },
 };
@@ -162,6 +166,29 @@ describe("summarizeMergeability", () => {
       })
     ).toEqual({ tone: "danger", label: "CONFLICT", sortRank: 4 });
   });
+
+  test("reports failing checks before pending", () => {
+    expect(
+      summarizeMergeability({
+        ...basePr,
+        mergeStateStatus: "UNSTABLE",
+        commits: {
+          nodes: [
+            {
+              commit: {
+                statusCheckRollup: {
+                  state: "FAILURE",
+                  contexts: {
+                    nodes: [{ __typename: "CheckRun", name: "backend-test / test", status: "COMPLETED", conclusion: "FAILURE" }],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      })
+    ).toEqual({ tone: "danger", label: "FAILING", sortRank: 3 });
+  });
 });
 
 describe("comparePullRequests", () => {
@@ -192,5 +219,33 @@ describe("listApprovers", () => {
         },
       })
     ).toEqual(["alice", "carol"]);
+  });
+});
+
+describe("listFailingChecks", () => {
+  test("collects failed check names", () => {
+    expect(
+      listFailingChecks({
+        ...basePr,
+        commits: {
+          nodes: [
+            {
+              commit: {
+                statusCheckRollup: {
+                  state: "FAILURE",
+                  contexts: {
+                    nodes: [
+                      { __typename: "CheckRun", name: "backend-test / test", status: "COMPLETED", conclusion: "FAILURE" },
+                      { __typename: "CheckRun", name: "format", status: "COMPLETED", conclusion: "SUCCESS" },
+                      { __typename: "StatusContext", context: "ci/custom", state: "ERROR" },
+                    ],
+                  },
+                },
+              },
+            },
+          ],
+        },
+      })
+    ).toEqual(["backend-test / test", "ci/custom"]);
   });
 });

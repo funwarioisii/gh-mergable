@@ -2,7 +2,7 @@
 
 `gh-mergeable` is a Bun CLI that watches open pull requests you authored or are assigned to you and shows whether they are mergeable.
 
-The default refresh interval is 10 seconds. PRs are sorted with `MERGEABLE`, then `BLOCKED`, then `DRAFT`, then the rest.
+The default refresh interval is 10 seconds. PRs are sorted with `MERGEABLE`, then `BLOCKED`, then `DRAFT`, then the rest, and failed CI checks are shown explicitly.
 
 ## Setup
 

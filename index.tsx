@@ -8,6 +8,7 @@ import {
   formatTime,
   formatTimestamp,
   listApprovers,
+  listFailingChecks,
   parseArgs,
   resolveOptions,
   setupConfig,
@@ -134,6 +135,7 @@ function App({ options }: { options: ResolvedOptions }) {
         <Box gap={2}>
           <Text color="green">MERGEABLE {stats.mergeable}</Text>
           <Text color="yellow">BLOCKED {stats.blocked}</Text>
+          <Text color="redBright">FAILING {stats.failing}</Text>
           <Text color="magenta">BEHIND {stats.behind}</Text>
           <Text color="red">CONFLICT {stats.conflict}</Text>
           <Text color="blue">DRAFT {stats.draft}</Text>
@@ -164,6 +166,7 @@ function App({ options }: { options: ResolvedOptions }) {
         {state.prs.map((pr) => {
           const summary = summarizeMergeability(pr);
           const approvers = listApprovers(pr);
+          const failingChecks = listFailingChecks(pr);
           return (
             <Box
               key={pr.url}
@@ -185,6 +188,9 @@ function App({ options }: { options: ResolvedOptions }) {
               </Text>
               {approvers.length > 0 ? (
                 <Text color="green">approved by {truncate(approvers.join(", "), columns - 18)}</Text>
+              ) : null}
+              {failingChecks.length > 0 ? (
+                <Text color="redBright">failing checks: {truncate(failingChecks.join(", "), columns - 18)}</Text>
               ) : null}
               <Text color="cyan">{truncate(pr.url, columns - 6)}</Text>
             </Box>
