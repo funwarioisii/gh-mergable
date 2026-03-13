@@ -1,7 +1,7 @@
 export default {
   repos: [
-    "heyinc/bongo",
-    "heyinc/rt-rails",
+    "funwarioisii/gh-mergeable",
+    "funwarioisii/1secv",
   ],
   intervalSec: 10,
   limit: 30,

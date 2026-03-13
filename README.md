@@ -47,8 +47,8 @@ Example config:
 ```ts
 export default {
   repos: [
-    "heyinc/bongo",
-    "heyinc/rt-rails",
+    "funwarioisii/gh-mergeable",
+    "funwarioisii/1secv",
   ],
   intervalSec: 10,
   limit: 30,
@@ -74,7 +74,7 @@ gh-mergeable --once
 Add repo filters on top of config:
 
 ```bash
-gh-mergeable --repo heyinc/bongo --repo heyinc/rt-rails
+gh-mergeable --repo funwarioisii/gh-mergeable --repo funwarioisii/1secv
 ```
 
 Change the refresh interval:
