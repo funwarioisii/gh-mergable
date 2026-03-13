@@ -25,6 +25,12 @@ You can also create the config directly:
 bun run index.tsx setup
 ```
 
+Edit the config in your editor:
+
+```bash
+gh-mergeable config
+```
+
 Or install with Bun only:
 
 ```bash
@@ -84,6 +90,7 @@ gh-mergeable --config ~/dotfiles/gh-mergeable/config.ts
 ```
 
 The terminal UI is built with Ink and refreshes in place.
+In a real terminal, you can move with the arrow keys or `j`/`k`, and open the selected PR with `Enter`, `Space`, or `o`.
 
 ## Test
 

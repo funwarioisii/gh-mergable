@@ -112,7 +112,12 @@ export type SetupOptions = {
   configPath?: string;
 };
 
-export type ParsedCommand = CliOptions | SetupOptions;
+export type ConfigCommandOptions = {
+  command: "config";
+  configPath?: string;
+};
+
+export type ParsedCommand = CliOptions | SetupOptions | ConfigCommandOptions;
 
 export type ResolvedOptions = {
   command: "watch";
@@ -200,6 +205,10 @@ const LATEST_REPO_QUERY = `
 export function parseArgs(args: string[]): ParsedCommand {
   if (args[0] === "setup") {
     return parseSetupArgs(args.slice(1));
+  }
+
+  if (args[0] === "config") {
+    return parseConfigCommandArgs(args.slice(1));
   }
 
   return parseWatchArgs(args);
@@ -295,6 +304,20 @@ function parseWatchArgs(args: string[]): CliOptions {
 }
 
 function parseSetupArgs(args: string[]): SetupOptions {
+  return {
+    command: "setup",
+    configPath: parseConfigPathFlag(args),
+  };
+}
+
+function parseConfigCommandArgs(args: string[]): ConfigCommandOptions {
+  return {
+    command: "config",
+    configPath: parseConfigPathFlag(args),
+  };
+}
+
+function parseConfigPathFlag(args: string[]) {
   let configPath: string | undefined;
 
   for (let index = 0; index < args.length; index += 1) {
@@ -326,7 +349,7 @@ function parseSetupArgs(args: string[]): SetupOptions {
     fail(`Unknown argument: ${arg}`);
   }
 
-  return { command: "setup", configPath };
+  return configPath;
 }
 
 function parseIntervalMs(rawValue: string) {
@@ -686,6 +709,42 @@ Setup options:
 General:
   --help              Show this help
 `);
+}
+
+export function getOpenCommand(url: string, platform = process.platform) {
+  switch (platform) {
+    case "darwin":
+      return ["open", url];
+    case "win32":
+      return ["cmd", "/c", "start", "", url];
+    default:
+      return ["xdg-open", url];
+  }
+}
+
+export function clampSelectedIndex(index: number, length: number) {
+  if (length <= 0) {
+    return 0;
+  }
+
+  if (index < 0) {
+    return 0;
+  }
+
+  if (index >= length) {
+    return length - 1;
+  }
+
+  return index;
+}
+
+export function getEditorCommand(configPath: string, editor = process.env.VISUAL || process.env.EDITOR || "vi") {
+  const parts = editor.trim().split(/\s+/).filter(Boolean);
+  if (parts.length === 0) {
+    return ["vi", configPath];
+  }
+
+  return [...parts, configPath];
 }
 
 function uniqueRepos(repos: string[]) {

@@ -4,8 +4,11 @@ import path from "node:path";
 import {
   buildSearchQueries,
   buildSearchQuery,
+  clampSelectedIndex,
   comparePullRequests,
+  getEditorCommand,
   getDefaultConfigDir,
+  getOpenCommand,
   listApprovers,
   listFailingChecks,
   normalizeConfig,
@@ -65,6 +68,13 @@ describe("parseArgs", () => {
   test("parses setup command", () => {
     expect(parseArgs(["setup", "--config", "./custom.ts"])).toEqual({
       command: "setup",
+      configPath: "./custom.ts",
+    });
+  });
+
+  test("parses config command", () => {
+    expect(parseArgs(["config", "--config", "./custom.ts"])).toEqual({
+      command: "config",
       configPath: "./custom.ts",
     });
   });
@@ -247,5 +257,25 @@ describe("listFailingChecks", () => {
         },
       })
     ).toEqual(["backend-test / test", "ci/custom"]);
+  });
+});
+
+describe("selection helpers", () => {
+  test("clamps selected index into range", () => {
+    expect(clampSelectedIndex(-1, 3)).toBe(0);
+    expect(clampSelectedIndex(1, 3)).toBe(1);
+    expect(clampSelectedIndex(10, 3)).toBe(2);
+    expect(clampSelectedIndex(10, 0)).toBe(0);
+  });
+
+  test("builds open command per platform", () => {
+    expect(getOpenCommand("https://example.com", "darwin")).toEqual(["open", "https://example.com"]);
+    expect(getOpenCommand("https://example.com", "linux")).toEqual(["xdg-open", "https://example.com"]);
+    expect(getOpenCommand("https://example.com", "win32")).toEqual(["cmd", "/c", "start", "", "https://example.com"]);
+  });
+
+  test("builds editor command from editor string", () => {
+    expect(getEditorCommand("/tmp/config.ts", "code -w")).toEqual(["code", "-w", "/tmp/config.ts"]);
+    expect(getEditorCommand("/tmp/config.ts", "")).toEqual(["vi", "/tmp/config.ts"]);
   });
 });

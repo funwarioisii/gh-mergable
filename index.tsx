@@ -1,12 +1,15 @@
 #!/usr/bin/env bun
 
 import React, { useEffect, useState } from "react";
-import { Box, render, Text, useApp } from "ink";
+import { Box, render, Text, useApp, useInput, useStdin } from "ink";
 import {
+  clampSelectedIndex,
   collectStats,
   fetchPullRequests,
   formatTime,
   formatTimestamp,
+  getEditorCommand,
+  getOpenCommand,
   listApprovers,
   listFailingChecks,
   parseArgs,
@@ -45,11 +48,45 @@ function toneColor(tone: ReturnType<typeof summarizeMergeability>["tone"]) {
 
 function App({ options }: { options: ResolvedOptions }) {
   const { exit } = useApp();
+  const { isRawModeSupported } = useStdin();
   const [state, setState] = useState<ScreenState>({
     prs: [],
     loading: true,
   });
+  const [selectedIndex, setSelectedIndex] = useState(0);
   const columns = process.stdout.columns ?? 120;
+
+  useEffect(() => {
+    setSelectedIndex((current) => clampSelectedIndex(current, state.prs.length));
+  }, [state.prs.length]);
+
+  useInput(
+    (input, key) => {
+      if (key.upArrow || input === "k") {
+        setSelectedIndex((current) => clampSelectedIndex(current - 1, state.prs.length));
+        return;
+      }
+
+      if (key.downArrow || input === "j") {
+        setSelectedIndex((current) => clampSelectedIndex(current + 1, state.prs.length));
+        return;
+      }
+
+      if ((key.return || input === " " || input === "o") && state.prs.length > 0) {
+        const selected = state.prs[selectedIndex];
+        if (!selected) {
+          return;
+        }
+
+        Bun.spawn(getOpenCommand(selected.url), {
+          stdin: "ignore",
+          stdout: "ignore",
+          stderr: "ignore",
+        });
+      }
+    },
+    { isActive: isRawModeSupported }
+  );
 
   useEffect(() => {
     let alive = true;
@@ -142,7 +179,9 @@ function App({ options }: { options: ResolvedOptions }) {
           <Text color="cyan">PENDING {stats.pending}</Text>
         </Box>
         <Box justifyContent="space-between">
-          <Text color="gray">Use Ctrl+C to quit</Text>
+          <Text color="gray">
+            {isRawModeSupported ? "Up/Down or j/k: select  Enter/Space/o: open  Ctrl+C: quit" : "Use Ctrl+C to quit"}
+          </Text>
           <Text color="gray">
             next refresh {options.once ? "-" : formatTime(state.nextRefresh ?? new Date(Date.now() + options.intervalMs))}
           </Text>
@@ -163,22 +202,23 @@ function App({ options }: { options: ResolvedOptions }) {
           </Box>
         ) : null}
 
-        {state.prs.map((pr) => {
+        {state.prs.map((pr, index) => {
           const summary = summarizeMergeability(pr);
           const approvers = listApprovers(pr);
           const failingChecks = listFailingChecks(pr);
+          const isSelected = index === selectedIndex;
           return (
             <Box
               key={pr.url}
               marginBottom={1}
               borderStyle="round"
-              borderColor={toneColor(summary.tone)}
+              borderColor={isSelected ? "white" : toneColor(summary.tone)}
               paddingX={1}
               flexDirection="column"
             >
               <Box justifyContent="space-between">
                 <Text color={toneColor(summary.tone)}>
-                  {summary.label.padEnd(9, " ")} {pr.repository.nameWithOwner}#{pr.number}
+                  {isSelected ? ">" : " "} {summary.label.padEnd(9, " ")} {pr.repository.nameWithOwner}#{pr.number}
                 </Text>
                 <Text color="gray">{formatTime(pr.updatedAt)}</Text>
               </Box>
@@ -213,6 +253,27 @@ async function main() {
       }
     } else {
       console.log(`Config already exists: ${result.configPath}`);
+    }
+    return;
+  }
+
+  if (command.command === "config") {
+    const result = await setupConfig(command.configPath);
+    if (result.created) {
+      console.log(`Created ${result.configPath}`);
+      if (result.defaultRepo) {
+        console.log(`Default repo: ${result.defaultRepo}`);
+      }
+    }
+
+    const proc = Bun.spawn(getEditorCommand(result.configPath), {
+      stdin: "inherit",
+      stdout: "inherit",
+      stderr: "inherit",
+    });
+    const exitCode = await proc.exited;
+    if (exitCode !== 0) {
+      process.exit(exitCode);
     }
     return;
   }
