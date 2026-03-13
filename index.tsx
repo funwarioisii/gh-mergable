@@ -1,6 +1,6 @@
 #!/usr/bin/env bun
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { Box, render, Text, useApp, useInput, useStdin } from "ink";
 import {
   clampSelectedIndex,
@@ -15,6 +15,7 @@ import {
   parseArgs,
   resolveOptions,
   setupConfig,
+  syncAggressiveRepos,
   summarizeMergeability,
   truncate,
   type PullRequest,
@@ -46,9 +47,48 @@ function toneColor(tone: ReturnType<typeof summarizeMergeability>["tone"]) {
   }
 }
 
+function KeyboardShortcuts({
+  selectedIndex,
+  prs,
+  setSelectedIndex,
+}: {
+  selectedIndex: number;
+  prs: PullRequest[];
+  setSelectedIndex: React.Dispatch<React.SetStateAction<number>>;
+}) {
+  useInput((input, key) => {
+    if (key.upArrow || input === "k") {
+      setSelectedIndex((current) => clampSelectedIndex(current - 1, prs.length));
+      return;
+    }
+
+    if (key.downArrow || input === "j") {
+      setSelectedIndex((current) => clampSelectedIndex(current + 1, prs.length));
+      return;
+    }
+
+    if ((key.return || input === " " || input === "o") && prs.length > 0) {
+      const selected = prs[selectedIndex];
+      if (!selected) {
+        return;
+      }
+
+      Bun.spawn(getOpenCommand(selected.url), {
+        stdin: "ignore",
+        stdout: "ignore",
+        stderr: "ignore",
+      });
+    }
+  });
+
+  return null;
+}
+
 function App({ options }: { options: ResolvedOptions }) {
   const { exit } = useApp();
   const { isRawModeSupported } = useStdin();
+  const [activeRepos, setActiveRepos] = useState(options.repos);
+  const activeReposRef = useRef(options.repos);
   const [state, setState] = useState<ScreenState>({
     prs: [],
     loading: true,
@@ -60,41 +100,26 @@ function App({ options }: { options: ResolvedOptions }) {
     setSelectedIndex((current) => clampSelectedIndex(current, state.prs.length));
   }, [state.prs.length]);
 
-  useInput(
-    (input, key) => {
-      if (key.upArrow || input === "k") {
-        setSelectedIndex((current) => clampSelectedIndex(current - 1, state.prs.length));
-        return;
-      }
-
-      if (key.downArrow || input === "j") {
-        setSelectedIndex((current) => clampSelectedIndex(current + 1, state.prs.length));
-        return;
-      }
-
-      if ((key.return || input === " " || input === "o") && state.prs.length > 0) {
-        const selected = state.prs[selectedIndex];
-        if (!selected) {
-          return;
-        }
-
-        Bun.spawn(getOpenCommand(selected.url), {
-          stdin: "ignore",
-          stdout: "ignore",
-          stderr: "ignore",
-        });
-      }
-    },
-    { isActive: isRawModeSupported }
-  );
-
   useEffect(() => {
     let alive = true;
     let timer: ReturnType<typeof setTimeout> | undefined;
 
     const refresh = async () => {
       try {
-        const prs = await fetchPullRequests(options);
+        let repos = activeReposRef.current;
+        if (options.aggressiveMode) {
+          const synced = await syncAggressiveRepos(options.configPath);
+          if (synced.addedRepos.length > 0) {
+            repos = [...new Set([...activeReposRef.current, ...synced.config.repos])];
+            activeReposRef.current = repos;
+            setActiveRepos(repos);
+          }
+        }
+
+        const prs = await fetchPullRequests({
+          repos,
+          limit: options.limit,
+        });
         if (!alive) {
           return;
         }
@@ -147,12 +172,15 @@ function App({ options }: { options: ResolvedOptions }) {
     };
   }, [exit, options]);
 
-  const scope = options.repos.length > 0 ? options.repos.join(", ") : "all repos";
+  const scope = activeRepos.length > 0 ? activeRepos.join(", ") : "all repos";
   const stats = collectStats(state.prs);
   const titleWidth = Math.max(24, columns - 52);
 
   return (
     <Box flexDirection="column" padding={1}>
+      {isRawModeSupported ? (
+        <KeyboardShortcuts selectedIndex={selectedIndex} prs={state.prs} setSelectedIndex={setSelectedIndex} />
+      ) : null}
       <Box justifyContent="space-between" borderStyle="round" borderColor="cyan" paddingX={1}>
         <Text color="cyanBright">gh-mergeable</Text>
         <Text color="gray">{scope}</Text>

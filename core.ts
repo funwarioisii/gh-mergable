@@ -96,6 +96,7 @@ export type AppConfig = {
   repos?: string[];
   intervalSec?: number;
   limit?: number;
+  aggressiveMode?: boolean;
 };
 
 export type CliOptions = {
@@ -126,6 +127,7 @@ export type ResolvedOptions = {
   repos: string[];
   limit: number;
   configPath: string;
+  aggressiveMode: boolean;
 };
 
 export const DEFAULT_INTERVAL_MS = 10_000;
@@ -188,9 +190,9 @@ const SEARCH_QUERY = `
   }
 `;
 
-const LATEST_REPO_QUERY = `
-  query($searchQuery: String!) {
-    search(query: $searchQuery, type: ISSUE, first: 1) {
+const RECENT_REPOS_QUERY = `
+  query($searchQuery: String!, $limit: Int!) {
+    search(query: $searchQuery, type: ISSUE, first: $limit) {
       nodes {
         ... on PullRequest {
           repository {
@@ -428,6 +430,7 @@ export async function resolveOptions(cliOptions: CliOptions): Promise<ResolvedOp
     intervalMs: cliOptions.intervalMs ?? config.intervalSec * 1000,
     limit: cliOptions.limit ?? config.limit,
     configPath,
+    aggressiveMode: config.aggressiveMode,
   };
 }
 
@@ -438,6 +441,7 @@ async function loadConfig(configPath: string): Promise<Required<AppConfig>> {
       repos: [],
       intervalSec: DEFAULT_INTERVAL_MS / 1000,
       limit: DEFAULT_LIMIT,
+      aggressiveMode: false,
     };
   }
 
@@ -462,6 +466,7 @@ export function normalizeConfig(data: unknown, source = getDefaultConfigPath()):
   const repos = config.repos ?? [];
   const intervalSec = config.intervalSec ?? DEFAULT_INTERVAL_MS / 1000;
   const limit = config.limit ?? DEFAULT_LIMIT;
+  const aggressiveMode = config.aggressiveMode ?? false;
 
   if (!Array.isArray(repos) || repos.some((repo) => typeof repo !== "string" || repo.length === 0)) {
     fail(`Invalid config in ${source}: "repos" must be an array of non-empty strings`);
@@ -475,10 +480,15 @@ export function normalizeConfig(data: unknown, source = getDefaultConfigPath()):
     fail(`Invalid config in ${source}: "limit" must be an integer between 1 and 100`);
   }
 
+  if (typeof aggressiveMode !== "boolean") {
+    fail(`Invalid config in ${source}: "aggressiveMode" must be a boolean`);
+  }
+
   return {
     repos: uniqueRepos(repos),
     intervalSec,
     limit,
+    aggressiveMode,
   };
 }
 
@@ -489,7 +499,12 @@ export async function setupConfig(configPath = getDefaultConfigPath()) {
   }
 
   const defaultRepo = await findLatestAuthoredRepo();
-  const configText = renderConfigTemplate(defaultRepo ? [defaultRepo] : []);
+  const configText = renderConfigTemplate({
+    repos: defaultRepo ? [defaultRepo] : [],
+    intervalSec: DEFAULT_INTERVAL_MS / 1000,
+    limit: DEFAULT_LIMIT,
+    aggressiveMode: false,
+  });
 
   await mkdir(path.dirname(configPath), { recursive: true });
   await Bun.write(configPath, configText);
@@ -497,13 +512,20 @@ export async function setupConfig(configPath = getDefaultConfigPath()) {
 }
 
 export async function findLatestAuthoredRepo() {
+  const repos = await findRecentlyAuthoredRepos(1);
+  return repos[0];
+}
+
+export async function findRecentlyAuthoredRepos(limit = 10) {
   const response = await runGh<LatestRepoResponse>([
     "api",
     "graphql",
     "-f",
-    `query=${LATEST_REPO_QUERY}`,
+    `query=${RECENT_REPOS_QUERY}`,
     "-F",
     "searchQuery=is:pr author:@me archived:false sort:created-desc",
+    "-F",
+    `limit=${limit}`,
   ]);
 
   const errors = response.errors ?? [];
@@ -511,23 +533,57 @@ export async function findLatestAuthoredRepo() {
     fail(errors.map((error) => error.message || "Unknown GraphQL error").join("\n"));
   }
 
-  return response.data?.search?.nodes?.[0]?.repository.nameWithOwner;
+  const repos = (response.data?.search?.nodes ?? [])
+    .map((node) => node?.repository.nameWithOwner)
+    .filter((repo): repo is string => Boolean(repo));
+
+  return uniqueRepos(repos);
 }
 
-export function renderConfigTemplate(repos: string[]) {
+export function renderConfigTemplate(config: Required<AppConfig>) {
   const repoLines =
-    repos.length > 0
-      ? repos.map((repo) => `    "${repo}",`).join("\n")
+    config.repos.length > 0
+      ? config.repos.map((repo) => `    "${repo}",`).join("\n")
       : '    // "owner/repo",';
 
   return `export default {
   repos: [
 ${repoLines}
   ],
-  intervalSec: ${DEFAULT_INTERVAL_MS / 1000},
-  limit: ${DEFAULT_LIMIT},
+  intervalSec: ${config.intervalSec},
+  limit: ${config.limit},
+  aggressiveMode: ${config.aggressiveMode},
 };
 `;
+}
+
+export function mergeRecentReposIntoConfig(config: Required<AppConfig>, recentRepos: string[]) {
+  const repos = uniqueRepos([...config.repos, ...recentRepos]);
+  const addedRepos = repos.filter((repo) => !config.repos.includes(repo));
+
+  return {
+    config: {
+      ...config,
+      repos,
+    },
+    addedRepos,
+  };
+}
+
+export async function syncAggressiveRepos(configPath: string) {
+  const config = await loadConfig(configPath);
+  if (!config.aggressiveMode) {
+    return { config, addedRepos: [] as string[] };
+  }
+
+  const recentRepos = await findRecentlyAuthoredRepos();
+  const merged = mergeRecentReposIntoConfig(config, recentRepos);
+  if (merged.addedRepos.length === 0) {
+    return merged;
+  }
+
+  await writeConfig(configPath, merged.config);
+  return merged;
 }
 
 export function getDefaultConfigDir() {
@@ -745,6 +801,11 @@ export function getEditorCommand(configPath: string, editor = process.env.VISUAL
   }
 
   return [...parts, configPath];
+}
+
+export async function writeConfig(configPath: string, config: Required<AppConfig>) {
+  await mkdir(path.dirname(configPath), { recursive: true });
+  await Bun.write(configPath, renderConfigTemplate(config));
 }
 
 function uniqueRepos(repos: string[]) {

@@ -11,6 +11,7 @@ import {
   getOpenCommand,
   listApprovers,
   listFailingChecks,
+  mergeRecentReposIntoConfig,
   normalizeConfig,
   parseArgs,
   renderConfigTemplate,
@@ -86,6 +87,7 @@ describe("config", () => {
       repos: ["octo/repo"],
       intervalSec: 10,
       limit: 30,
+      aggressiveMode: false,
     });
   });
 
@@ -98,6 +100,7 @@ describe("config", () => {
   repos: ["octo/repo", "octo/another"],
   intervalSec: 42,
   limit: 12,
+  aggressiveMode: true,
 };
 `
     );
@@ -118,11 +121,41 @@ describe("config", () => {
       repos: ["octo/repo", "octo/another", "octo/third"],
       limit: 12,
       configPath,
+      aggressiveMode: true,
     });
   });
 
   test("renders config template with repo", () => {
-    expect(renderConfigTemplate(["octo/repo"])).toContain('"octo/repo"');
+    expect(
+      renderConfigTemplate({
+        repos: ["octo/repo"],
+        intervalSec: 10,
+        limit: 30,
+        aggressiveMode: true,
+      })
+    ).toContain("aggressiveMode: true");
+  });
+
+  test("merges recent repos into config", () => {
+    expect(
+      mergeRecentReposIntoConfig(
+        {
+          repos: ["octo/repo"],
+          intervalSec: 10,
+          limit: 30,
+          aggressiveMode: true,
+        },
+        ["octo/repo", "octo/another"]
+      )
+    ).toEqual({
+      config: {
+        repos: ["octo/repo", "octo/another"],
+        intervalSec: 10,
+        limit: 30,
+        aggressiveMode: true,
+      },
+      addedRepos: ["octo/another"],
+    });
   });
 
   test("uses xdg config directory when present", () => {

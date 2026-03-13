@@ -52,10 +52,11 @@ export default {
   ],
   intervalSec: 10,
   limit: 30,
+  aggressiveMode: false,
 };
 ```
 
-See [config.example.ts](/Users/wako/ghq/github.com/funwarioisii/gh-mergeable/config.example.ts).
+If you want the app to auto-add repositories where you recently created PRs, set `aggressiveMode: true`.
 
 ## Run
 
