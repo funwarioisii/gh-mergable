@@ -108,6 +108,16 @@ export type CliOptions = {
   configPath?: string;
 };
 
+export type ServerCommandOptions = {
+  command: "server";
+  intervalMs?: number;
+  repos: string[];
+  limit?: number;
+  configPath?: string;
+  host: string;
+  port: number;
+};
+
 export type SetupOptions = {
   command: "setup";
   configPath?: string;
@@ -118,22 +128,39 @@ export type ConfigCommandOptions = {
   configPath?: string;
 };
 
-export type ParsedCommand = CliOptions | SetupOptions | ConfigCommandOptions;
+export type ParsedCommand = CliOptions | SetupOptions | ConfigCommandOptions | ServerCommandOptions;
 
 export type ResolvedOptions = {
-  command: "watch";
-  intervalMs: number;
+  command: "watch" | "server";
   once: boolean;
+  intervalMs: number;
   repos: string[];
   limit: number;
   configPath: string;
   aggressiveMode: boolean;
 };
 
+export type DashboardPullRequest = PullRequest & {
+  approvers: string[];
+  failingChecks: string[];
+  status: ReturnType<typeof summarizeMergeability>;
+};
+
+export type DashboardSnapshot = {
+  repos: string[];
+  prs: DashboardPullRequest[];
+  stats: ReturnType<typeof collectStats>;
+  lastUpdated?: string;
+  nextRefresh?: string;
+  error?: string;
+};
+
 export const DEFAULT_INTERVAL_MS = 10_000;
 export const DEFAULT_LIMIT = 30;
 export const CONFIG_DIR_NAME = "gh-mergeable";
 export const DEFAULT_CONFIG_BASENAME = "config.ts";
+export const DEFAULT_SERVER_HOST = "127.0.0.1";
+export const DEFAULT_SERVER_PORT = 8787;
 
 const SEARCH_QUERY = `
   query($searchQuery: String!, $limit: Int!) {
@@ -211,6 +238,10 @@ export function parseArgs(args: string[]): ParsedCommand {
 
   if (args[0] === "config") {
     return parseConfigCommandArgs(args.slice(1));
+  }
+
+  if (args[0] === "server") {
+    return parseServerArgs(args.slice(1));
   }
 
   return parseWatchArgs(args);
@@ -305,6 +336,121 @@ function parseWatchArgs(args: string[]): CliOptions {
   return { command: "watch", intervalMs, once, repos, limit, configPath };
 }
 
+function parseServerArgs(args: string[]): ServerCommandOptions {
+  let intervalMs: number | undefined;
+  let limit: number | undefined;
+  const repos: string[] = [];
+  let configPath: string | undefined;
+  let host = DEFAULT_SERVER_HOST;
+  let port = DEFAULT_SERVER_PORT;
+
+  for (let index = 0; index < args.length; index += 1) {
+    const arg = args[index];
+    if (!arg) {
+      fail("Unexpected empty argument");
+    }
+
+    if (arg === "--help" || arg === "-h") {
+      printHelp();
+      process.exit(0);
+    }
+
+    if (arg === "--repo") {
+      const repo = args[index + 1];
+      if (!repo) {
+        fail("--repo requires a value like OWNER/REPO");
+      }
+      repos.push(repo);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--repo=")) {
+      repos.push(arg.slice("--repo=".length));
+      continue;
+    }
+
+    if (arg === "--interval") {
+      const rawValue = args[index + 1];
+      if (!rawValue) {
+        fail("--interval requires seconds");
+      }
+      intervalMs = parseIntervalMs(rawValue);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--interval=")) {
+      intervalMs = parseIntervalMs(arg.slice("--interval=".length));
+      continue;
+    }
+
+    if (arg === "--limit") {
+      const rawValue = args[index + 1];
+      if (!rawValue) {
+        fail("--limit requires a number between 1 and 100");
+      }
+      limit = parseLimit(rawValue);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--limit=")) {
+      limit = parseLimit(arg.slice("--limit=".length));
+      continue;
+    }
+
+    if (arg === "--config") {
+      const rawValue = args[index + 1];
+      if (!rawValue) {
+        fail("--config requires a file path");
+      }
+      configPath = rawValue;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--config=")) {
+      configPath = arg.slice("--config=".length);
+      continue;
+    }
+
+    if (arg === "--host") {
+      const rawValue = args[index + 1];
+      if (!rawValue) {
+        fail("--host requires a value");
+      }
+      host = rawValue;
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--host=")) {
+      host = arg.slice("--host=".length);
+      continue;
+    }
+
+    if (arg === "--port") {
+      const rawValue = args[index + 1];
+      if (!rawValue) {
+        fail("--port requires a number");
+      }
+      port = parsePort(rawValue);
+      index += 1;
+      continue;
+    }
+
+    if (arg.startsWith("--port=")) {
+      port = parsePort(arg.slice("--port=".length));
+      continue;
+    }
+
+    fail(`Unknown argument: ${arg}`);
+  }
+
+  return { command: "server", intervalMs, repos, limit, configPath, host, port };
+}
+
 function parseSetupArgs(args: string[]): SetupOptions {
   return {
     command: "setup",
@@ -370,6 +516,14 @@ function parseLimit(rawValue: string) {
   return limit;
 }
 
+function parsePort(rawValue: string) {
+  const port = Number(rawValue);
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    fail(`Invalid port: ${rawValue}`);
+  }
+  return port;
+}
+
 export async function fetchPullRequests(options: Pick<ResolvedOptions, "repos" | "limit">) {
   const responses = await Promise.all(
     buildSearchQueries(options.repos).map((searchQuery) =>
@@ -419,16 +573,28 @@ export function buildSearchQueries(repos: string[]) {
 }
 
 export async function resolveOptions(cliOptions: CliOptions): Promise<ResolvedOptions> {
-  const configPath = cliOptions.configPath ?? getDefaultConfigPath();
+  return resolveSharedOptions(cliOptions);
+}
+
+export async function resolveServerOptions(serverOptions: ServerCommandOptions): Promise<ResolvedOptions> {
+  return resolveSharedOptions(serverOptions);
+}
+
+async function resolveSharedOptions(
+  input:
+    | Pick<CliOptions, "command" | "once" | "intervalMs" | "repos" | "limit" | "configPath">
+    | Pick<ServerCommandOptions, "command" | "intervalMs" | "repos" | "limit" | "configPath">
+): Promise<ResolvedOptions> {
+  const configPath = input.configPath ?? getDefaultConfigPath();
   const config = await loadConfig(configPath);
-  const repos = uniqueRepos([...(config.repos ?? []), ...cliOptions.repos]);
+  const repos = uniqueRepos([...config.repos, ...input.repos]);
 
   return {
-    command: "watch",
-    once: cliOptions.once,
+    command: input.command,
+    once: "once" in input ? input.once : false,
     repos,
-    intervalMs: cliOptions.intervalMs ?? config.intervalSec * 1000,
-    limit: cliOptions.limit ?? config.limit,
+    intervalMs: input.intervalMs ?? config.intervalSec * 1000,
+    limit: input.limit ?? config.limit,
     configPath,
     aggressiveMode: config.aggressiveMode,
   };
@@ -546,7 +712,14 @@ export function renderConfigTemplate(config: Required<AppConfig>) {
       ? config.repos.map((repo) => `    "${repo}",`).join("\n")
       : '    // "owner/repo",';
 
-  return `export default {
+  return `type Config = {
+  repos: string[];
+  intervalSec: number;
+  limit: number;
+  aggressiveMode: boolean;
+};
+
+const config: Config = {
   repos: [
 ${repoLines}
   ],
@@ -554,6 +727,8 @@ ${repoLines}
   limit: ${config.limit},
   aggressiveMode: ${config.aggressiveMode},
 };
+
+export default config;
 `;
 }
 
@@ -597,6 +772,29 @@ export function getDefaultConfigDir() {
 
 export function getDefaultConfigPath() {
   return path.join(getDefaultConfigDir(), DEFAULT_CONFIG_BASENAME);
+}
+
+export function createSnapshot({
+  repos,
+  prs,
+  intervalMs,
+  lastUpdated,
+  error,
+}: {
+  repos: string[];
+  prs: DashboardPullRequest[];
+  intervalMs: number;
+  lastUpdated?: Date;
+  error?: string;
+}): DashboardSnapshot {
+  return {
+    repos,
+    prs,
+    stats: collectStats(prs),
+    lastUpdated: lastUpdated?.toISOString(),
+    nextRefresh: lastUpdated ? new Date(lastUpdated.getTime() + intervalMs).toISOString() : undefined,
+    error,
+  };
 }
 
 export function summarizeMergeability(pr: PullRequest) {
@@ -751,6 +949,7 @@ export function printHelp() {
   console.log(`Usage:
   bun run index.tsx [options]
   bun run index.tsx setup [options]
+  bun run index.tsx server [options]
 
 Watch options:
   --once              Fetch once and exit
@@ -761,6 +960,14 @@ Watch options:
 
 Setup options:
   --config <path>     Write config file to this path
+
+Server options:
+  --config <path>     Load config file (default: ${getDefaultConfigPath()})
+  --host <host>       Bind host (default: ${DEFAULT_SERVER_HOST})
+  --port <port>       Bind port (default: ${DEFAULT_SERVER_PORT})
+  --interval <sec>    Refresh interval in seconds (default: 10)
+  --repo <owner/repo> Filter to a repository, repeatable
+  --limit <count>     Number of PRs to fetch, 1-100 (default: 30)
 
 General:
   --help              Show this help

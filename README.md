@@ -45,7 +45,14 @@ bun run index.tsx setup
 Example config:
 
 ```ts
-export default {
+type Config = {
+  repos: string[];
+  intervalSec: number;
+  limit: number;
+  aggressiveMode: boolean;
+};
+
+const config: Config = {
   repos: [
     "funwarioisii/gh-mergeable",
     "funwarioisii/1secv",
@@ -54,6 +61,8 @@ export default {
   limit: 30,
   aggressiveMode: false,
 };
+
+export default config;
 ```
 
 If you want the app to auto-add repositories where you recently created PRs, set `aggressiveMode: true`.
@@ -64,6 +73,18 @@ Watch all configured PRs:
 
 ```bash
 gh-mergeable
+```
+
+Run the browser dashboard:
+
+```bash
+gh-mergeable server
+```
+
+or
+
+```bash
+mise run server
 ```
 
 Fetch once and exit:

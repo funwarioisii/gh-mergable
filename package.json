@@ -10,6 +10,7 @@
     "build": "bun build ./index.tsx --target bun --outfile ./dist/gh-mergeable.js --external react-devtools-core",
     "ci": "bun run build && bun run typecheck && bun test",
     "ci:cli": "bun run ci",
+    "server": "bun run ./index.tsx server",
     "typecheck": "bunx tsc --noEmit",
     "test": "bun test",
     "start": "bun run ./index.tsx"
@@ -20,6 +21,7 @@
     "typescript": "^5.8.2"
   },
   "dependencies": {
+    "hono": "^4.12.8",
     "ink": "^6.8.0",
     "react": "^19.2.4"
   }

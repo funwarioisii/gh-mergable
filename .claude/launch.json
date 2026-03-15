@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "server",
+      "runtimeExecutable": "bun",
+      "runtimeArgs": ["run", "./index.tsx", "server"],
+      "port": 8787
+    }
+  ]
+}

@@ -14,6 +14,7 @@ import {
   listFailingChecks,
   parseArgs,
   resolveOptions,
+  resolveServerOptions,
   setupConfig,
   syncAggressiveRepos,
   summarizeMergeability,
@@ -21,6 +22,7 @@ import {
   type PullRequest,
   type ResolvedOptions,
 } from "./core";
+import { startServer } from "./server";
 
 type ScreenState = {
   prs: PullRequest[];
@@ -303,6 +305,12 @@ async function main() {
     if (exitCode !== 0) {
       process.exit(exitCode);
     }
+    return;
+  }
+
+  if (command.command === "server") {
+    const options = await resolveServerOptions(command);
+    await startServer(command, options);
     return;
   }
 

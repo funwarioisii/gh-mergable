@@ -25,5 +25,8 @@ run = "bun test"
 [tasks.start]
 run = "bun run ./index.tsx"
 
+[tasks.server]
+run = "bun run ./index.tsx server"
+
 [tasks.link]
 run = "bun link"

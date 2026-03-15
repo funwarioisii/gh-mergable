@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { mkdtemp, mkdir } from "node:fs/promises";
+import { mkdtemp } from "node:fs/promises";
 import path from "node:path";
 import {
   buildSearchQueries,
@@ -77,6 +77,18 @@ describe("parseArgs", () => {
     expect(parseArgs(["config", "--config", "./custom.ts"])).toEqual({
       command: "config",
       configPath: "./custom.ts",
+    });
+  });
+
+  test("parses server command", () => {
+    expect(parseArgs(["server", "--host", "0.0.0.0", "--port", "9999", "--config", "./custom.ts"])).toEqual({
+      command: "server",
+      intervalMs: undefined,
+      repos: [],
+      limit: undefined,
+      configPath: "./custom.ts",
+      host: "0.0.0.0",
+      port: 9999,
     });
   });
 });
