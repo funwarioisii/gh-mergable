@@ -57,6 +57,13 @@ function renderHtml() {
       .approvers { color: var(--ok); }
       .failing { color: var(--bad); }
       .error { margin-top: 16px; padding: 14px 18px; border-radius: 16px; border: 1px solid #f0b4b4; background: #fff4f4; color: var(--bad); }
+      .group { margin-top: 18px; }
+      .group summary { cursor: pointer; list-style: none; padding: 10px 16px; border-radius: 12px; background: rgba(255,253,248,.8); border: 1px solid var(--line); font: 700 15px/1.6 ui-monospace, SFMono-Regular, monospace; letter-spacing: .04em; display: flex; align-items: center; gap: 10px; user-select: none; }
+      .group summary::-webkit-details-marker { display: none; }
+      .group summary::before { content: "▶"; font-size: 11px; transition: transform .15s; }
+      .group[open] summary::before { transform: rotate(90deg); }
+      .group summary .count { font-weight: 400; color: var(--muted); font-size: 13px; }
+      .group .group-list { display: grid; gap: 12px; margin-top: 12px; }
     </style>
   </head>
   <body>
@@ -91,7 +98,16 @@ function renderHtml() {
           list.innerHTML = '<div class="card muted">No open PRs found.</div>';
           return;
         }
-        list.innerHTML = snapshot.prs.map((pr) => {
+        const groups = new Map();
+        const groupOrder = ["MERGEABLE","BLOCKED","FAILING","BEHIND","CONFLICT","DRAFT","PENDING"];
+        for (const pr of snapshot.prs) {
+          const key = pr.status.label;
+          if (!groups.has(key)) groups.set(key, []);
+          groups.get(key).push(pr);
+        }
+        const openState = {};
+        list.querySelectorAll("details.group").forEach((d) => { openState[d.classList[1]] = d.open; });
+        const renderCard = (pr) => {
           const approvers = (pr.approvers ?? []).join(", ");
           const failingChecks = (pr.failingChecks ?? []).join(", ");
           return '<a class="card" target="_blank" rel="noreferrer" href="' + pr.url + '">' +
@@ -101,7 +117,17 @@ function renderHtml() {
             (approvers ? '<div class="extra approvers">approved by ' + approvers + '</div>' : '') +
             (failingChecks ? '<div class="extra failing">failing checks: ' + failingChecks + '</div>' : '') +
             '</a>';
-        }).join("");
+        };
+        list.innerHTML = groupOrder
+          .filter((key) => groups.has(key))
+          .map((key) => {
+            const prs = groups.get(key);
+            const isOpen = key in openState ? openState[key] : true;
+            return '<details class="group ' + key + '"' + (isOpen ? ' open' : '') + '>' +
+              '<summary><span class="' + key + '">' + key + '</span> <span class="count">(' + prs.length + ')</span></summary>' +
+              '<div class="group-list">' + prs.map(renderCard).join("") + '</div>' +
+              '</details>';
+          }).join("");
       };
       fetch('/api/state').then((r) => r.json()).then(render);
       const es = new EventSource('/events');
