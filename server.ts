@@ -79,6 +79,7 @@ function renderHtml() {
       <section class="summary">
         <div class="stats" id="stats"></div>
         <div class="muted">This page updates via SSE from the local gh-mergeable server.</div>
+        <button id="notif-btn" style="display:none; margin-top:8px; padding:6px 14px; border-radius:8px; border:1px solid var(--line); background:var(--card); cursor:pointer; font:inherit; font-size:13px;">🔔 Enable notifications</button>
       </section>
       <section id="error"></section>
       <section id="list" class="list"></section>
@@ -87,6 +88,46 @@ function renderHtml() {
       const fmt = (iso) => iso ? new Intl.DateTimeFormat("ja-JP", { dateStyle: "medium", timeStyle: "medium" }).format(new Date(iso)) : "-";
       const statsOrder = ["mergeable","blocked","failing","behind","conflict","draft","pending"];
       const label = (key) => key.toUpperCase();
+
+      const prevStatuses = new Map();
+      let firstSnapshot = true;
+
+      const notifBtn = document.getElementById("notif-btn");
+      if ("Notification" in window) {
+        if (Notification.permission === "default") {
+          notifBtn.style.display = "inline-block";
+          notifBtn.onclick = () => Notification.requestPermission().then((p) => {
+            notifBtn.style.display = p === "default" ? "inline-block" : "none";
+          });
+        }
+      }
+
+      const notify = (title, body, url) => {
+        if (Notification.permission !== "granted") return;
+        const n = new Notification(title, { body, icon: "https://github.githubassets.com/favicons/favicon-dark.svg", tag: url });
+        n.onclick = () => { window.open(url, "_blank"); n.close(); };
+      };
+
+      const detectChanges = (snapshot) => {
+        if (firstSnapshot) {
+          for (const pr of snapshot.prs) prevStatuses.set(pr.url, pr.status.label);
+          firstSnapshot = false;
+          return;
+        }
+        for (const pr of snapshot.prs) {
+          const prev = prevStatuses.get(pr.url);
+          const curr = pr.status.label;
+          if (prev && prev !== curr) {
+            if (curr === "MERGEABLE") {
+              notify("✅ MERGEABLE", pr.repository.nameWithOwner + "#" + pr.number + " " + pr.title, pr.url);
+            } else if (prev === "MERGEABLE") {
+              notify("⚠️ " + curr, pr.repository.nameWithOwner + "#" + pr.number + " " + pr.title, pr.url);
+            }
+          }
+          prevStatuses.set(pr.url, curr);
+        }
+      };
+
       const render = (snapshot) => {
         document.getElementById("scope").textContent = snapshot.repos.length > 0 ? snapshot.repos.join(", ") : "all repos";
         document.getElementById("timestamps").textContent = "updated " + fmt(snapshot.lastUpdated) + " / next " + fmt(snapshot.nextRefresh);
@@ -128,6 +169,7 @@ function renderHtml() {
               '<div class="group-list">' + prs.map(renderCard).join("") + '</div>' +
               '</details>';
           }).join("");
+        detectChanges(snapshot);
       };
       fetch('/api/state').then((r) => r.json()).then(render);
       const es = new EventSource('/events');
